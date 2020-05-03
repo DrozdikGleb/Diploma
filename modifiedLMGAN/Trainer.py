@@ -9,19 +9,15 @@ from torch.autograd import Variable
 from torch.nn import BCEWithLogitsLoss, MSELoss
 import numpy as np
 
-from meta_gan.DatasetLoader import get_loader
-from meta_gan.GraphBuilder import GraphBuilder
-from meta_gan.Models import Generator, Discriminator
-from meta_gan.feature_extraction.LambdaFeaturesCollector import LambdaFeaturesCollector
-from meta_gan.feature_extraction.MetaFeaturesCollector import MetaFeaturesCollector
-import logging
-
-logging.basicConfig(format='%(asctime)s %(message)s', filename='train2005.log', level=logging.DEBUG,
-                    datefmt='%d-%m %H:%M:%S')
+from modifiedLMGAN.DatasetLoader import get_loader
+from modifiedLMGAN.GraphBuilder import GraphBuilder
+from modifiedLMGAN.ModifiedLMGAN import Generator, Discriminator
+from feature_extraction.LambdaFeaturesCollector import LambdaFeaturesCollector
+from feature_extraction.MetaFeaturesCollector import MetaFeaturesCollector
 
 
 class Trainer:
-    def __init__(self, num_epochs: int = 500, cuda: bool = True, continue_from: int = 0):
+    def __init__(self, num_epochs: int = 500, cuda: bool = False, continue_from: int = 0):
         self.features = 16
         self.instances = 64
         self.classes = 2
@@ -30,8 +26,7 @@ class Trainer:
         self.workers = 5
         self.num_epochs = num_epochs
         self.cuda = cuda
-        self.log_step = 1 #10
-        self.log_step_print = 2 #50
+        self.log_step_print = 10
         self.save_period = 1
         self.continue_from = continue_from
 
@@ -46,29 +41,10 @@ class Trainer:
         self.test_loader = get_loader(f"../data-loader/datasets/dtest8/", 16, 8, 2, self.metas, self.lambdas, 228, 5,
                                       train_meta=False)
 
-        if continue_from == 0:
-            self.generator = Generator(self.features, self.instances, self.classes, self.metas.getLength(), self.z_size)
-            self.discriminator = Discriminator(self.features, self.instances, self.classes, self.metas.getLength(),
+
+        self.generator = Generator(self.features, self.instances, self.classes, self.metas.getLength(), self.z_size)
+        self.discriminator = Discriminator(self.features, self.instances, self.classes, self.metas.getLength(),
                                                self.lambdas.getLength())
-        else:
-            self.generator = Generator(self.features, self.instances, self.classes, self.metas.getLength(), self.z_size)
-            self.generator.load_state_dict(
-                torch.load(
-                    f'{self.models_path}/generator-{self.features}_{self.instances}_{self.classes}-{continue_from}.pkl'))
-            self.generator.eval()
-
-            self.discriminator = Discriminator(self.features, self.instances, self.classes, self.metas.getLength(),
-                                               self.lambdas.getLength())
-            self.discriminator.load_state_dict(
-                torch.load(
-                    f'{self.models_path}/discriminator-{self.features}_{self.instances}_{self.classes}-{continue_from}.pkl'))
-            self.discriminator.eval()
-
-        if self.cuda:
-            self.generator.cuda()
-
-        if self.cuda:
-            self.discriminator.cuda()
 
         self.lr = 0.0002
         self.beta1 = 0.5
@@ -80,16 +56,7 @@ class Trainer:
                                       self.lr, [self.beta1, self.beta2])
 
         self.cross_entropy = BCEWithLogitsLoss()
-        if self.cuda:
-            self.cross_entropy.cuda()
         self.mse = MSELoss()
-        if self.cuda:
-            self.mse.cuda()
-
-    def to_variable(self, x):
-        if self.cuda:
-            x = x.cuda()
-        return Variable(x)
 
     def getDistance(self, x: torch.Tensor, y: torch.Tensor) -> [float]:
         x_in = np.squeeze(x.cpu().detach().numpy())
@@ -111,34 +78,33 @@ class Trainer:
         for data in data_in:
             meta_list.append(self.metas.getShort(data.cpu().detach().numpy()))
         result = torch.stack(meta_list)
-        return self.to_variable(result.view((result.size(0), result.size(1), 1, 1)))
+        return Variable(result.view((result.size(0), result.size(1), 1, 1)))
 
     def getLambda(self, data_in: torch.Tensor):
         lamba_list = []
         for data in data_in:
             lamba_list.append(self.lambdas.get(data.cpu().detach().numpy()))
         result = torch.stack(lamba_list)
-        return self.to_variable(result)
+        return Variable(result)
 
     def train(self):
         total_steps = len(self.data_loader)
-        logging.info(f'Starting training...')
         graph_builder = GraphBuilder()
         for epoch in range(self.continue_from, self.num_epochs):
             loss = []
             print(len(self.data_loader))
             for i, data in enumerate(self.data_loader):
-                dataset = self.to_variable(data[0])
-                metas = self.to_variable(data[1])
-                lambdas = self.to_variable(data[2]).squeeze()
+                dataset = Variable(data[0])
+                metas = Variable(data[1])
+                lambdas = Variable(data[2]).squeeze()
                 batch_size = data[0].size(0)
                 noise = torch.randn(batch_size, self.z_size)
                 noise = noise.view((noise.size(0), noise.size(1), 1, 1))
-                noise = self.to_variable(noise)
+                noise = Variable(noise)
                 zeros = torch.zeros([batch_size, 1], dtype=torch.float32)
-                zeros = self.to_variable(zeros)
+                zeros = Variable(zeros)
                 ones = torch.ones([batch_size, 1], dtype=torch.float32)
-                ones = self.to_variable(ones)
+                ones = Variable(ones)
 
                 # Get D on real
                 graph1, graph2 = graph_builder.build_complete_graph(dataset)
@@ -176,7 +142,7 @@ class Trainer:
                 # Get D on fake
                 noise = torch.randn(batch_size, self.z_size)
                 noise = noise.view(noise.size(0), noise.size(1), 1, 1)
-                noise = self.to_variable(noise)
+                noise = Variable(noise)
                 fake_data = self.generator(noise, metas)
 
                 graph1, graph2 = graph_builder.build_complete_graph(dataset)
@@ -195,16 +161,10 @@ class Trainer:
                 g_loss.backward()
                 self.g_optimizer.step()
 
-                # logging
-                if (i + 1) % self.log_step == 0:
-                    log = (
-                        f'[[{epoch},{i}],[{d_real_rf_loss},{d_real_labels_loss},{d_fake_rf_loss},{d_fake_labels_loss}],[{g_fake_rf_loss},{g_fake_meta_loss}]]'
-                    )
-                    logging.info(log)
                 if (i + 1) % self.log_step_print == 0:
                     print((
-                        f'[{datetime.now()}] Epoch[{epoch}/{self.num_epochs}], Step[{i}/{total_steps}],'
-                        f' D_losses: [{d_real_rf_loss}|{d_real_labels_loss}|{d_fake_rf_loss}|{d_fake_labels_loss}], '
+                        f'[{datetime.now()}] Epoch[{epoch}/{self.num_epochs}], Step[{i}/{total_steps}],\n'
+                        f' D_losses: [{d_real_rf_loss}|{d_real_labels_loss}|{d_fake_rf_loss}|{d_fake_labels_loss}],\n'
                         f'G_losses:[{g_fake_rf_loss}|{g_fake_meta_loss}]'
                     ))
 
@@ -221,5 +181,5 @@ class Trainer:
 
 
 if __name__ == '__main__':
-    trainer = Trainer(num_epochs=20, cuda=False)
+    trainer = Trainer(num_epochs=20)
     trainer.train()

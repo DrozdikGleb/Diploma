@@ -6,9 +6,9 @@ import torch
 from sklearn.preprocessing import MinMaxScaler
 from tqdm import tqdm
 
-from meta_gan.feature_extraction.DecisionTreeMeta import DecisionTreeMeta
-from meta_gan.feature_extraction.InformationMeta import InformationMeta
-from meta_gan.feature_extraction.StatisticalMeta import StatisticalMeta
+from feature_extraction.DecisionTreeMeta import DecisionTreeMeta
+from feature_extraction.InformationMeta import InformationMeta
+from feature_extraction.StatisticalMeta import StatisticalMeta
 
 
 class MetaFeaturesCollector:

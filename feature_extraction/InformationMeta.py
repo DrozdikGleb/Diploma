@@ -4,7 +4,7 @@ import numpy as np
 import scipy.stats as stats
 import sklearn.metrics as metrics
 
-from meta_gan.feature_extraction.MetaFeatureApi import MetaFeature
+from feature_extraction.MetaFeatureApi import MetaFeature
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 

@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.stats as stats
 
-from meta_gan.feature_extraction.MetaFeatureApi import MetaFeature
+from feature_extraction.MetaFeatureApi import MetaFeature
 
 
 class StatisticalMeta(MetaFeature):

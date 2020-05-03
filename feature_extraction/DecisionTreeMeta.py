@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier
 
-from meta_gan.feature_extraction.MetaFeatureApi import MetaFeature
+from feature_extraction.MetaFeatureApi import MetaFeature
 from sklearn.tree._tree import Tree
 
 

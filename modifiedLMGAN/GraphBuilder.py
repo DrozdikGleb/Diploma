@@ -1,17 +1,22 @@
 import networkx as nx
 import numpy as np
 from typing import List
+import os
 import math
-import subprocess
+import shlex
+from subprocess import Popen, PIPE
+from threading import Timer
 
 import torch
 from torch_geometric.utils import from_networkx
+
 
 class Vertex:
     def __init__(self, num: int, values):
         self.num = num
         self.values = values  # Элементы в строчке или столбце(признаки объекта, либо значение признака для каждого объекта)
         self.neighbors = {}
+
 
 class GraphBuilder:
 
@@ -28,22 +33,57 @@ class GraphBuilder:
         G = self.set_features_to_vertices(G, obj_verts)
         return G
 
-
     def build_hypercube(self, data):
-        graph_file = "input.txt"
+        obj_verts, _ = self.create_vertices(data)
+        dist_matrix = self.get_distance_matrix(obj_verts)
+        graph_file_path = "./input.txt"
+        hypercube_path = "./results"
+        self.save_to_file(dist_matrix, graph_file_path)
         max_time = 1
-        cmd = "java -jar Hypercube.jar search %s  ./results/ %d" % (graph_file, max_time)
-        subprocess.run(cmd, check=True, shell=True)
-        pass
+        cmd = "java -jar Hypercube.jar search %s %s %d" % (graph_file_path, hypercube_path,
+                                                           max_time)
+        self.run_process_with_timeout(cmd, 30)
+        min_res, hypercube_verts = self.get_best_hypercube(hypercube_path)
 
-    def set_features_to_vertices(self, G, vertices):
+
+    def get_best_hypercube(self, path):
+        min_len = 0
+        with open(os.path.join(path, "result.txt")) as file:
+            line = file.readline()
+            line = line.split(" ")
+            min_len = int(line[0])
+            res = line[1][1:-2]
+            hypercube_verts = list(map(int, res.split(',')))
+        return min_len, hypercube_verts
+
+    def run_process_with_timeout(self, cmd, timeout_sec):
+        proc = Popen(shlex.split(cmd), stdout=PIPE, stderr=PIPE)
+        timer = Timer(timeout_sec, proc.kill)
+        try:
+            timer.start()
+            stdout, stderr = proc.communicate()
+        finally:
+            timer.cancel()
+
+    def save_to_file(self, dist_matrix, file_location):
+        with open(file_location, "w+") as input_file:
+            for i in range(len(dist_matrix)):
+                cur_line = " ".join(map(str, dist_matrix[i]))
+                cur_line += "\n"
+                input_file.write(cur_line)
+
+
+
+    @staticmethod
+    def set_features_to_vertices(G, vertices):
         x = []
         for cur_vert in vertices:
             x.append(cur_vert.values)
         G.x = torch.tensor(x)
         return G
 
-    def create_vertices(self, data):
+    @staticmethod
+    def create_vertices(data):
         obj_verts = []
         feature_verts = []
         for i, obj in enumerate(data):
@@ -53,7 +93,8 @@ class GraphBuilder:
 
         return obj_verts, feature_verts
 
-    def count_euclidean_distance(self, a: list, b: list):
+    @staticmethod
+    def count_euclidean_distance(a: list, b: list):
         assert len(a) == len(b)
         return math.sqrt(sum((a1 - b1) ** 2 for a1, b1 in zip(a, b)))
 
@@ -66,7 +107,7 @@ class GraphBuilder:
             cur_vert = verts[i]
             for j in range(i + 1, len(verts)):
                 next_vert = verts[j]
-                dist = self.count_euclidean_distance(cur_vert.values, next_vert.values)
+                dist = int(round(self.count_euclidean_distance(cur_vert.values, next_vert.values), 2) * 100)
                 distance_matrix[next_vert.num][cur_vert.num] = dist
                 distance_matrix[cur_vert.num][next_vert.num] = dist
                 cur_vert.neighbors[next_vert.num] = dist

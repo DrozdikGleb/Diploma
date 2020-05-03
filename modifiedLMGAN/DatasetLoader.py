@@ -3,8 +3,8 @@ import os
 import torch
 from torch.utils import data
 import numpy as np
-from meta_gan.feature_extraction.MetaFeaturesCollector import MetaFeaturesCollector
-from meta_gan.feature_extraction.LambdaFeaturesCollector import LambdaFeaturesCollector
+from feature_extraction.MetaFeaturesCollector import MetaFeaturesCollector
+from feature_extraction.LambdaFeaturesCollector import LambdaFeaturesCollector
 
 
 class DatasetFolder(data.Dataset):
@@ -58,7 +58,8 @@ def get_loader(path: str, features_size: int, instances_size: int, classes_size:
 
 
 if __name__ == '__main__':
-    datasets = DatasetFolder("../processed_data/processed_16_64_2/", 16, 64, 2, MetaFeaturesCollector(16, 64),
+    datasets = DatasetFolder("../processed_data/processed_16_64_2/", 16, 64, 2,
+                             MetaFeaturesCollector(16, 64),
                              LambdaFeaturesCollector(16, 64), True)
     for i in range(len(datasets)):
         print(datasets.__getitem__(i))
