@@ -6,7 +6,7 @@ import numpy as np
 import networkx as nx
 import itertools
 
-from meta_gan.GraphBuilder import GraphBuilder
+from modifiedLMGAN.GraphBuilder import GraphBuilder
 
 
 class Vertex:

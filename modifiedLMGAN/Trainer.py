@@ -1,3 +1,4 @@
+import argparse
 import os
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +18,7 @@ from feature_extraction.MetaFeaturesCollector import MetaFeaturesCollector
 
 
 class Trainer:
-    def __init__(self, num_epochs: int = 500, cuda: bool = False, continue_from: int = 0):
+    def __init__(self, num_epochs: int = 500, cuda: bool = False, models_path: str = "./models_graph"):
         self.features = 16
         self.instances = 64
         self.classes = 2
@@ -28,23 +29,25 @@ class Trainer:
         self.cuda = cuda
         self.log_step_print = 10
         self.save_period = 1
-        self.continue_from = continue_from
+        self.graph_builder = GraphBuilder()
 
-        self.models_path = "./models_graph_1"
+        self.models_path = models_path
 
         self.lambdas = LambdaFeaturesCollector(self.features, self.instances)
         self.metas = MetaFeaturesCollector(self.features, self.instances)
-        self.data_loader = get_loader(f"../data-loader/datasets/dprocessed_{self.features}_{self.instances}_{self.classes}/",
-                                      self.features, self.instances, self.classes, self.metas,
-                                      self.lambdas, self.batch_size,
-                                      self.workers)
-        self.test_loader = get_loader(f"../data-loader/datasets/dtest8/", 16, 8, 2, self.metas, self.lambdas, 228, 5,
+        self.data_loader = get_loader(
+            f"../loader/datasets/dprocessed_{self.features}_{self.instances}_{self.classes}/",
+            self.features, self.instances, self.classes, self.metas,
+            self.lambdas, self.batch_size,
+            self.workers)
+        self.test_loader = get_loader("../loader/datasets/dtest8/", 16, 8, 2, self.metas,
+                                      self.lambdas, 228, 5,
                                       train_meta=False)
 
-
-        self.generator = Generator(self.features, self.instances, self.classes, self.metas.getLength(), self.z_size)
-        self.discriminator = Discriminator(self.features, self.instances, self.classes, self.metas.getLength(),
-                                               self.lambdas.getLength())
+        self.generator = Generator(self.features, self.instances, self.classes,
+                                   self.metas.getLength(), self.z_size)
+        self.discriminator = Discriminator(self.features, self.instances, self.classes,
+                                           self.metas.getLength(), self.lambdas.getLength())
 
         self.lr = 0.0002
         self.beta1 = 0.5
@@ -87,10 +90,31 @@ class Trainer:
         result = torch.stack(lamba_list)
         return Variable(result)
 
+    def get_d_real(self, dataset, metas, lambdas, zeros):
+        graph1, graph2 = self.graph_builder.build_complete_graph(dataset)
+        real_outputs = self.discriminator(graph1, graph2, metas)
+        # real_outputs = self.discriminator(dataset, metas)
+
+        d_real_labels_loss = self.mse(real_outputs[1:], lambdas)
+
+        d_real_rf_loss = self.mse(real_outputs[:1], zeros)  #
+        return d_real_labels_loss + 0.7 * d_real_rf_loss, d_real_labels_loss, d_real_rf_loss
+
+    def get_d_fake(self, dataset, noise, metas, ones):
+        fake_data = self.generator(noise, metas)
+        fake_data_metas = self.getMeta(fake_data)
+
+        graph1, graph2 = self.graph_builder.build_complete_graph(dataset)
+        fake_outputs = self.discriminator(graph1, graph2, fake_data_metas)
+        # fake_outputs = self.discriminator(fake_data, fake_data_metas)
+        fake_lambdas = self.getLambda(fake_data).squeeze()
+        d_fake_labels_loss = self.cross_entropy(fake_outputs[1:], fake_lambdas)
+        d_fake_rf_loss = self.mse(fake_outputs[:1], ones)
+        return 0.7 * d_fake_rf_loss + 0.6 * d_fake_labels_loss, d_fake_labels_loss, d_fake_rf_loss
+
     def train(self):
         total_steps = len(self.data_loader)
-        graph_builder = GraphBuilder()
-        for epoch in range(self.continue_from, self.num_epochs):
+        for epoch in range(self.num_epochs):
             loss = []
             print(len(self.data_loader))
             for i, data in enumerate(self.data_loader):
@@ -106,56 +130,32 @@ class Trainer:
                 ones = torch.ones([batch_size, 1], dtype=torch.float32)
                 ones = Variable(ones)
 
-                # Get D on real
-                graph1, graph2 = graph_builder.build_complete_graph(dataset)
-                real_outputs = self.discriminator(graph1, graph2, metas)
-                #real_outputs = self.discriminator(dataset, metas)
+                d_real_loss, d_real_labels_loss, d_real_rf_loss = \
+                    self.get_d_real(dataset, metas, lambdas, zeros)
 
+                d_fake_loss, d_fake_labels_loss, d_fake_rf_loss = \
+                    self.get_d_fake(dataset, noise, metas, ones)
 
-                d_real_labels_loss = self.mse(real_outputs[1:], lambdas)
-                
-                d_real_rf_loss = self.mse(real_outputs[:1], zeros) # разве тут не 1?
-                d_real_loss = d_real_labels_loss + 0.7 * d_real_rf_loss
-
-                # Get D on fake
-                fake_data = self.generator(noise, metas)
-                fake_data_metas = self.getMeta(fake_data)
-
-                graph1, graph2 = graph_builder.build_complete_graph(dataset)
-                fake_outputs = self.discriminator(graph1, graph2, fake_data_metas)
-                #fake_outputs = self.discriminator(fake_data, fake_data_metas)
-                fake_lambdas = self.getLambda(fake_data).squeeze()
-                d_fake_labels_loss = self.cross_entropy(fake_outputs[1:], fake_lambdas)
-                d_fake_rf_loss = self.mse(fake_outputs[:1], ones)
-                d_fake_loss = 0.7 * d_fake_rf_loss + 0.6 * d_fake_labels_loss
-
-
-                # maximize log(D(x) + log(1 - D(G(z)))
-                # D(x) - веротяность, что x - real, D(G(z)) - вероятность, что сгенерированные датасет - real
-                # Train D
                 d_loss = d_real_loss + 0.8 * d_fake_loss
                 self.generator.zero_grad()
                 self.discriminator.zero_grad()
                 d_loss.backward()
                 self.d_optimizer.step()
 
-                # Get D on fake
                 noise = torch.randn(batch_size, self.z_size)
                 noise = noise.view(noise.size(0), noise.size(1), 1, 1)
                 noise = Variable(noise)
                 fake_data = self.generator(noise, metas)
 
-                graph1, graph2 = graph_builder.build_complete_graph(dataset)
+                graph1, graph2 = self.graph_builder.build_complete_graph(dataset)
                 fake_outputs = self.discriminator(graph1, graph2, metas)
-                #fake_outputs = self.discriminator(fake_data, metas)
+                # fake_outputs = self.discriminator(fake_data, metas)
                 g_fake_rf_loss = self.mse(fake_outputs[:1], zeros)
                 fake_metas = self.getMeta(fake_data)
                 g_fake_meta_loss = self.mse(fake_metas, metas)
                 g_loss = 0.7 * g_fake_rf_loss + g_fake_meta_loss
 
-
                 # minimize log(1 - D(G(z)))
-                # Train G
                 self.generator.zero_grad()
                 self.discriminator.zero_grad()
                 g_loss.backward()
@@ -181,5 +181,8 @@ class Trainer:
 
 
 if __name__ == '__main__':
-    trainer = Trainer(num_epochs=20)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-path", default="./models_graph")
+    args = parser.parse_args()
+    trainer = Trainer(num_epochs=20, models_path=args.model_path)
     trainer.train()

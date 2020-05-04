@@ -112,9 +112,9 @@ def sortData(zero_in: np.ndarray, one_in: np.ndarray) -> (np.ndarray, np.ndarray
     return zero_out, one_out
 
 
-def writeData(name_in: str, zero_num: int, one_num: int, zero_in: np.ndarray, one_in: np.ndarray) -> bool:
-    zero_sorted, one_sorted = sortData(zero_in, one_in)
-    #zero_sorted, one_sorted = (zero_in, one_in)
+def writeData(name_in: str, zero_num: int, one_num: int, zero_in: np.ndarray, one_in: np.ndarray,
+              need_sort: bool = True) -> bool:
+    zero_sorted, one_sorted = sortData(zero_in, one_in) if need_sort else (zero_in, one_in)
     raw_path = f'{done_data_str_raw}/{name_in}/'
     raw_name = f'{raw_path}{name_in}_{zero_num}_{one_num}'
     path = Path(raw_path)
@@ -129,7 +129,7 @@ def writeData(name_in: str, zero_num: int, one_num: int, zero_in: np.ndarray, on
     return True
 
 
-def prepare(dataset_name: str, dataset_in: (np.ndarray, np.ndarray), pbar: tqdm):
+def prepare(dataset_name: str, dataset_in: (np.ndarray, np.ndarray), pbar: tqdm, need_sort):
     data_in, classes_in = dataset_in
     labels_in = prepareLabels(classes_in)
     (_, classes_count) = labels_in.shape
@@ -163,7 +163,7 @@ def prepare(dataset_name: str, dataset_in: (np.ndarray, np.ndarray), pbar: tqdm)
                 else:
                     shrunk_zero_data = scaled_zero_data
                     shrunk_one_data = scaled_one_data
-                writeData(dataset_name, j, k, shrunk_zero_data, shrunk_one_data)
+                writeData(dataset_name, j, k, shrunk_zero_data, shrunk_one_data, need_sort)
 
 
 if __name__ == '__main__':
@@ -185,7 +185,7 @@ if __name__ == '__main__':
         pbar = tqdm(enumerate(dirnames), total=len(dirnames))
         for cc, dirname in pbar:
             if cc >= start_from:
-                prepare_status = prepare(dirname, load(dirname), pbar)
+                prepare_status = prepare(dirname, load(dirname), pbar, True)
                 if prepare_status is not None:
                     non_processed.append(dirname)
 
