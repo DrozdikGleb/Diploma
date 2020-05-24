@@ -15,7 +15,7 @@ def make_split(train_path, test_path):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train-dir", default="datasets/dprocessed_16_64_2/")
-    parser.add_argument("--test-dir", default="datasets/dtest/")
+    parser.add_argument("--train-dir", default="datasets/dprocessed_16_32_2/")
+    parser.add_argument("--test-dir", default="datasets/dtest32/")
     args = parser.parse_args()
     make_split(args.train_dir, args.test_dir)

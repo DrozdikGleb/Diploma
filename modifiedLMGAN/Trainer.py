@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
+import pickle
 from scipy.spatial.distance import mahalanobis
 from torch import optim
 from torch.autograd import Variable
@@ -18,17 +19,17 @@ from feature_extraction.MetaFeaturesCollector import MetaFeaturesCollector
 
 
 class Trainer:
-    def __init__(self, num_epochs: int = 500, cuda: bool = False, models_path: str = "./models_graph"):
+    def __init__(self, num_epochs: int = 500, cuda: bool = False, models_path: str = "./models_standard_128"):
         self.features = 16
-        self.instances = 64
+        self.instances = 32
         self.classes = 2
         self.z_size = 100
         self.batch_size = 1
         self.workers = 5
         self.num_epochs = num_epochs
         self.cuda = cuda
-        self.log_step_print = 10
-        self.save_period = 1
+        self.log_step_print = 100
+        self.save_period = 10
         self.graph_builder = GraphBuilder()
 
         self.models_path = models_path
@@ -40,7 +41,7 @@ class Trainer:
             self.features, self.instances, self.classes, self.metas,
             self.lambdas, self.batch_size,
             self.workers)
-        self.test_loader = get_loader("../loader/datasets/dtest8/", 16, 8, 2, self.metas,
+        self.test_loader = get_loader("../loader/datasets/dtest32/", 16, 32, 2, self.metas,
                                       self.lambdas, 228, 5,
                                       train_meta=False)
 
@@ -93,7 +94,7 @@ class Trainer:
     def get_d_real(self, dataset, metas, lambdas, zeros):
         graph1, graph2 = self.graph_builder.build_complete_graph(dataset)
         real_outputs = self.discriminator(graph1, graph2, metas)
-        # real_outputs = self.discriminator(dataset, metas)
+        #real_outputs = self.discriminator(dataset, metas)
 
         d_real_labels_loss = self.mse(real_outputs[1:], lambdas)
 
@@ -106,7 +107,7 @@ class Trainer:
 
         graph1, graph2 = self.graph_builder.build_complete_graph(dataset)
         fake_outputs = self.discriminator(graph1, graph2, fake_data_metas)
-        # fake_outputs = self.discriminator(fake_data, fake_data_metas)
+        #fake_outputs = self.discriminator(fake_data, fake_data_metas)
         fake_lambdas = self.getLambda(fake_data).squeeze()
         d_fake_labels_loss = self.cross_entropy(fake_outputs[1:], fake_lambdas)
         d_fake_rf_loss = self.mse(fake_outputs[:1], ones)
@@ -114,9 +115,13 @@ class Trainer:
 
     def train(self):
         total_steps = len(self.data_loader)
+        g_loss_epochs = []
+        d_loss_epochs = []
         for epoch in range(self.num_epochs):
             loss = []
-            print(len(self.data_loader))
+            max_len = len(self.data_loader)
+            g_loss_epoch1 = []
+            d_loss_epoch1 = []
             for i, data in enumerate(self.data_loader):
                 dataset = Variable(data[0])
                 metas = Variable(data[1])
@@ -149,12 +154,13 @@ class Trainer:
 
                 graph1, graph2 = self.graph_builder.build_complete_graph(dataset)
                 fake_outputs = self.discriminator(graph1, graph2, metas)
-                # fake_outputs = self.discriminator(fake_data, metas)
+                #fake_outputs = self.discriminator(fake_data, metas)
                 g_fake_rf_loss = self.mse(fake_outputs[:1], zeros)
                 fake_metas = self.getMeta(fake_data)
                 g_fake_meta_loss = self.mse(fake_metas, metas)
                 g_loss = 0.7 * g_fake_rf_loss + g_fake_meta_loss
-
+                g_loss_epoch1.append(g_loss)
+                d_loss_epoch1.append(d_loss)
                 # minimize log(1 - D(G(z)))
                 self.generator.zero_grad()
                 self.discriminator.zero_grad()
@@ -168,8 +174,17 @@ class Trainer:
                         f'G_losses:[{g_fake_rf_loss}|{g_fake_meta_loss}]'
                     ))
 
+                if i == total_steps - 1:
+                    print("Intermediate result - ")
+                    print((
+                        f'[{datetime.now()}] Epoch[{epoch}/{self.num_epochs}], Step[{i}/{total_steps}],\n'
+                        f' D_losses: [{d_real_rf_loss}|{d_real_labels_loss}|{d_fake_rf_loss}|{d_fake_labels_loss}],\n'
+                        f'G_losses:[{g_fake_rf_loss}|{g_fake_meta_loss}]'
+                    ))
+            d_loss_epochs.append((sum(d_loss_epoch1)) / total_steps)
+            g_loss_epochs.append((sum(g_loss_epoch1)) / total_steps)
             # saving
-            if self.save_period == 1:
+            if (epoch + 1) % self.save_period == 0:
                 done_data_str_path = Path(self.models_path)
                 done_data_str_path.mkdir(parents=True, exist_ok=True)
                 g_path = os.path.join(self.models_path,
@@ -179,10 +194,14 @@ class Trainer:
                 torch.save(self.generator.state_dict(), g_path)
                 torch.save(self.discriminator.state_dict(), d_path)
 
+        with open(os.path.join(self.models_path, 'g_loss.pickle'), 'wb') as g_loss_file:
+            pickle.dump(g_loss_epochs, g_loss_file)
+        with open(os.path.join(self.models_path, 'd_loss.pickle'), 'wb') as d_loss_file:
+            pickle.dump(d_loss_epochs, d_loss_file)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", default="./models_graph")
+    parser.add_argument("--model-path", default="./models_fullgraph")
     args = parser.parse_args()
     trainer = Trainer(num_epochs=20, models_path=args.model_path)
     trainer.train()

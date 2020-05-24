@@ -8,10 +8,11 @@ import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
 from torch.nn import MSELoss
 from torch.autograd import Variable
+from tqdm import tqdm
 
 from modifiedLMGAN.DatasetLoader import get_loader
 from modifiedLMGAN.GraphBuilder import GraphBuilder
-from modifiedLMGAN.ModifiedLMGAN import Discriminator
+from modifiedLMGAN.LMGAN64 import Discriminator
 from feature_extraction.LambdaFeaturesCollector import LambdaFeaturesCollector
 from feature_extraction.MetaFeaturesCollector import MetaFeaturesCollector
 
@@ -44,23 +45,31 @@ def test_classifiers(train_metas, train_lambdas, test_metas, test_lambdas):
         test_classifier(clf, clf_name, train_metas, train_lambdas, test_metas, test_lambdas)
 
 
-def test_discriminators(test_datasets, test_metas, test_lambdas, discriminator_location):
-    discriminator = Discriminator(16, 64, 2, metas.getLength(),
+def test_discriminators(datatest, test_datasets, test_metas, test_lambdas, discriminator_location):
+    discriminator = Discriminator(16, 32, 2, metas.getLength(),
                                   lambdas.getLength())
     discriminator.load_state_dict(
-        torch.load(discriminator_location)) #'./models_graph_1/discriminator-16_64_2-1.pkl'
+        torch.load(discriminator_location))
     discriminator.eval()
     loss = []
     mse = MSELoss()
-    graph_builder = GraphBuilder()
-    for i in range(len(test_metas)):
-        dataset = Variable(test_datasets[i]).squeeze()
-        cur_meta = Variable(test_metas[i])
-        cur_lambda = Variable(test_lambdas[i]).squeeze()
-        graph1, graph2 = graph_builder.build_complete_graph(dataset)
-        real_outputs = discriminator(graph1, graph2, cur_meta)
+    #graph_builder = GraphBuilder()
+    for data in tqdm(datatest, total=len(datatest)):
+        dataset = Variable(data[0])
+        cur_meta = Variable(data[1])
+        cur_lambda = Variable(data[2]).squeeze()
+        real_outputs = discriminator(dataset, cur_meta)
         d_real_labels_loss = mse(real_outputs[1:], cur_lambda)
         loss.append(d_real_labels_loss.cpu().detach().numpy())
+    # for i in range(len(test_metas)):
+    #     dataset = Variable(test_datasets[i]).squeeze()
+    #     cur_meta = Variable(test_metas[i])
+    #     cur_lambda = Variable(test_lambdas[i]).squeeze()
+    #     #graph1, graph2 = graph_builder.build_complete_graph(dataset)
+    #
+    #     real_outputs = discriminator(dataset, cur_meta)
+    #     d_real_labels_loss = mse(real_outputs[1:], cur_lambda)
+    #     loss.append(d_real_labels_loss.cpu().detach().numpy())
     print(np.mean(loss))
 
 
@@ -74,16 +83,17 @@ def start_test(train_dir, test_dir, discriminator_location):
     _, train_m, train_l = get_metas_and_lambdas(data_train)
     datasets, test_m, test_l = get_metas_and_lambdas(data_test)
 
-    test_classifiers(train_m, train_l, test_m, test_l)
-    test_discriminators(datasets, test_m, test_l, discriminator_location)
+    #test_classifiers(train_m, train_l, test_m, test_l)
+    test_discriminators(data_test, datasets, test_m, test_l, discriminator_location)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train-dir", required=True)
-    parser.add_argument("--test-dir", required=True)
-    parser.add_argument("-d", "--disc-location", required=True)
-    datasize = 64
+    parser.add_argument("--train-dir", default="../loader/datasets/dprocessed_16_32_2/")
+    parser.add_argument("--test-dir", default="../loader/datasets/dtest32/")
+    parser.add_argument("-d", "--disc-location",
+                        default="../modifiedLMGAN/models_LMGAN64/discriminator-16_32_2-20.pkl")
+    datasize = 32
     lambdas = LambdaFeaturesCollector(16, datasize)
     metas = MetaFeaturesCollector(16, datasize)
     args = parser.parse_args()

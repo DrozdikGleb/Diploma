@@ -83,8 +83,8 @@ class MetaFeaturesCollector:
 
 
 if __name__ == '__main__':
-    meta = MetaFeaturesCollector(16, 64)
-    print(meta.train(f"../../processed_data/processed_16_64_2/"))
+    meta = MetaFeaturesCollector(16, 32)
+    print(meta.train("../loader/datasets/test_16_32_2/"))
     print(meta.min_max.data_min_)
     print(meta.min_max.data_max_)
     print(meta.min_max.data_range_)

@@ -19,8 +19,9 @@ def get_datasets():
 
     datasets = []
     for (dataset_id, dataset) in datasets_list.items():
-        print(dataset)
         if 'NumberOfInstances' not in dataset or 'NumberOfClasses' not in dataset:
+            continue
+        if dataset['NumberOfInstances'] > 20000.0:
             continue
         datasets.append(DatasetInfo(dataset_id, dataset['NumberOfInstances'],
                                        dataset['NumberOfFeatures'], dataset['NumberOfClasses']))
@@ -44,6 +45,7 @@ def download_arff_files(datasets, processed_datasets):
         for dataset in datasets:
             try:
                 if dataset.id not in processed_datasets:
+                    print("processing dataset %d" % dataset.id)
                     ds: OpenMLDataset = open_ml_dataset.get_dataset(dataset.id)
                     file = ds.data_file
                     filename, file_extension = os.path.splitext(file)
@@ -69,4 +71,4 @@ if __name__ == '__main__':
 
     processed_datasets = get_processed_datasets()
 
-    download_arff_files(datasets[:50], processed_datasets)
+    download_arff_files(datasets, processed_datasets)

@@ -168,7 +168,7 @@ def prepare(dataset_name: str, dataset_in: (np.ndarray, np.ndarray), pbar: tqdm,
 
 if __name__ == '__main__':
     target_features = 16
-    target_instances = 64
+    target_instances = 32
     target_classes = 2
     raw_data_str = "./datasets/np_raw/"
     done_data_str = f"./datasets/dprocessed_{target_features}_{target_instances}_{target_classes}/"
