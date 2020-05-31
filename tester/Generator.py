@@ -39,7 +39,10 @@ def test_generator(datasets, gen):
         fake_metas = get_meta(fake_data)
         mse = get_mse(fake_metas, metas)
         results.append(mse)
-    return np.mean(np.array(results))
+    avg = np.mean(np.array(results))
+    n = len(results)
+    disp = sum([(xi - avg) * (xi - avg) for xi in results]) / n
+    return avg, disp
 
 
 if __name__ == '__main__':

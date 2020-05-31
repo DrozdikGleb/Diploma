@@ -70,7 +70,11 @@ def test_discriminators(datatest, test_datasets, test_metas, test_lambdas, discr
     #     real_outputs = discriminator(dataset, cur_meta)
     #     d_real_labels_loss = mse(real_outputs[1:], cur_lambda)
     #     loss.append(d_real_labels_loss.cpu().detach().numpy())
+    avg = np.mean(np.array(loss))
+    n = len(loss)
+    disp = sum([(xi - avg) * (xi - avg) for xi in loss]) / n
     print(np.mean(loss))
+    print(disp)
 
 
 def start_test(train_dir, test_dir, discriminator_location):
@@ -83,7 +87,7 @@ def start_test(train_dir, test_dir, discriminator_location):
     _, train_m, train_l = get_metas_and_lambdas(data_train)
     datasets, test_m, test_l = get_metas_and_lambdas(data_test)
 
-    #test_classifiers(train_m, train_l, test_m, test_l)
+    test_classifiers(train_m, train_l, test_m, test_l)
     test_discriminators(data_test, datasets, test_m, test_l, discriminator_location)
 
 
@@ -92,7 +96,7 @@ if __name__ == '__main__':
     parser.add_argument("--train-dir", default="../loader/datasets/dprocessed_16_32_2/")
     parser.add_argument("--test-dir", default="../loader/datasets/dtest32/")
     parser.add_argument("-d", "--disc-location",
-                        default="../modifiedLMGAN/models_LMGAN64/discriminator-16_32_2-20.pkl")
+                        default="../modifiedLMGAN/models_fullgraph/discriminator-16_32_2-20.pkl")
     datasize = 32
     lambdas = LambdaFeaturesCollector(16, datasize)
     metas = MetaFeaturesCollector(16, datasize)
